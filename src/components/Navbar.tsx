@@ -1,5 +1,14 @@
-import React, { useState, type JSX } from "react";
+import React, { useState, useEffect, type JSX } from "react";
 import { motion } from "framer-motion";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  query,
+  onSnapshot,
+} from "firebase/firestore";
+import { db } from "../util/firebaseConfig"; // Your Firebase config file
+
 import {
   FiArrowRight,
   FiGithub,
@@ -24,10 +33,25 @@ type Deliverable = {
 const BootcampLanding: React.FC = () => {
   const [activeWeek, setActiveWeek] = useState<number | null>(null);
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: "", email: "" });
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    experience: "beginner", // 'beginner' | 'intermediate' | 'advanced'
+  });
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [signupCount, setSignupCount] = useState(0);
+
+  useEffect(() => {
+    const q = query(collection(db, "signups"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setSignupCount(snapshot.size);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const weeks: Week[] = [
     {
@@ -111,41 +135,50 @@ const BootcampLanding: React.FC = () => {
     show: { opacity: 1, y: 0 },
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    
-    if (!formData.name || !formData.email) {
-      setError('Please fill in all fields');
-      return;
+  const validateForm = () => {
+    if (!formData.name.match(/^[a-zA-Z ]{2,30}$/)) {
+      setError("Please enter a valid name");
+      return false;
     }
+    if (!formData.email.includes("@")) {
+      setError("Invalid email address");
+      return false;
+    }
+    return true;
+  };
 
-    if (!formData.email.includes('@')) {
-      setError('Please enter a valid email address');
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    setIsLoading(true);
 
     try {
-      setIsLoading(true);
-      await fetch('https://formsubmit.co/ajax/joshuaolugotun17@gmail.com', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+      await addDoc(collection(db, "signups"), {
+        name: formData.name,
+        email: formData.email,
+        createdAt: serverTimestamp(),
+        status: "pending",
+        // Email-specific fields:
+        to: formData.email, // Recipient
+        message: {
+          subject: "🎉 Welcome to the Web Dev Bootcamp!",
+          text: `Hi ${formData.name},\n\nThanks for signing up! We'll contact you soon.\n\nStart preparing:\n1. Install VS Code\n2. Create a GitHub account\n\nCheers,\nThe Bootcamp Team`,
+          html: `
+          <h1>Welcome, ${formData.name}!</h1>
+          <p>Your seat is reserved for the <strong>June 2025 Bootcamp</strong>.</p>
+          <h3>Next Steps:</h3>
+          <ol>
+            <li>Install <a href="https://code.visualstudio.com/">VS Code</a></li>
+            <li>Create a <a href="https://github.com/">GitHub account</a></li>
+          </ol>
+          <p>We'll email you 3 days before the start date.</p>
+          <p><em>Cheers,</em><br>The Bootcamp Team</p>
+        `,
         },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          _subject: 'New Bootcamp Signup',
-          _template: 'table'
-        })
       });
       setSubmitted(true);
     } catch (error) {
-      console.error('Error:', error);
-      setError('Submission failed, please try again');
-    } finally {
-      setIsLoading(false);
+      console.error("Error:", error);
     }
   };
 
@@ -214,7 +247,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 View Curriculum
               </motion.a>
             </div>
-            <div className="badges">
+            <div className="stats">
               <motion.span
                 whileHover={{ y: -3 }}
                 transition={{ type: "spring", stiffness: 300 }}
@@ -225,7 +258,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 whileHover={{ y: -3 }}
                 transition={{ type: "spring", stiffness: 300 }}
               >
-                💻 Hands-on Projects
+                💻 {signupCount}+ Students Enrolled
               </motion.span>
               <motion.span
                 whileHover={{ y: -3 }}
@@ -237,6 +270,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           </motion.div>
         </div>
       </section>
+
       {/* Benefits Section */}
       <section className="benefits">
         <div className="container">
@@ -421,7 +455,8 @@ const handleSubmit = async (e: React.FormEvent) => {
           </motion.div>
         </div>
       </section>
-  <section className="enrollment-cta" id="enroll">
+      {/* Enrollment CTA Section */}
+      <section className="enrollment-cta" id="enroll">
         <div className="cta-gradient"></div>
         <div className="container">
           <motion.div
@@ -434,21 +469,36 @@ const handleSubmit = async (e: React.FormEvent) => {
             <p>Limited seats available for June 2025 cohort</p>
             <form className="enrollment-form" onSubmit={handleSubmit}>
               <div className="form-group">
-                <input 
-                  type="text" 
-                  placeholder="Your Name" 
+                <input
+                  type="text"
+                  placeholder="Your Name"
                   required
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                 />
               </div>
               <div className="form-group">
-                <input 
-                  type="email" 
-                  placeholder="Email Address" 
+                <input
+                  type="email"
+                  placeholder="Email Address"
                   required
                   value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <input
+                  type="phone"
+                  placeholder="Phone Number"
+                  required
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                 />
               </div>
               {error && <div className="error-message">{error}</div>}
@@ -457,25 +507,32 @@ const handleSubmit = async (e: React.FormEvent) => {
                   🎉 Thanks for signing up! We'll be in touch soon.
                 </div>
               ) : (
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="primary-button"
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Processing...' : 'Reserve Your Spot'} <FiArrowRight />
+                  {isLoading ? "Processing..." : "Reserve Your Spot"}{" "}
+                  <FiArrowRight />
                 </button>
               )}
             </form>
-            <motion.div 
+            <motion.div
               className="bootcamp-details"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.3 }}
             >
-              <p><strong>🗓️ Duration:</strong> 4 Weeks (June 2025)</p>
-              <p><strong>🕒 Time:</strong> 3 sessions/week (90 mins each)</p>
-              <p><strong>📍 Location:</strong> Campus + WhatsApp Group Support</p>
+              <p>
+                <strong>🗓️ Duration:</strong> 4 Weeks (June 2025)
+              </p>
+              <p>
+                <strong>🕒 Time:</strong> 3 sessions/week (90 mins each)
+              </p>
+              <p>
+                <strong>📍 Location:</strong> Campus + WhatsApp Group Support
+              </p>
             </motion.div>
           </motion.div>
         </div>
